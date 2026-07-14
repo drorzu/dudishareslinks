@@ -297,6 +297,81 @@ function buildSite(cfg, manifest) {
   fs.writeFileSync(path.join(BUILD_DIR, "200.html"), renderGallery(cfg, manifest));
 }
 
+// A hand-built pixel-art Paris skyline: Haussmann rooftops + the Eiffel Tower +
+// a sun (day) / moon + stars (night). Built as an inline SVG of blocky rects.
+function parisSvg() {
+  const W = 300; // scene width
+  const G = 78; // ground line
+  const cx = 150; // Eiffel centre
+  const P = [];
+  const px = (x, y, w, h, cls) =>
+    P.push(`<rect class="${cls}" x="${x}" y="${y}" width="${w}" height="${h}"/>`);
+
+  // Row of Haussmann buildings with mansard roofs and windows. Two shorter
+  // ones (116, 170) peek out just beside the tower's splayed legs.
+  const blds = [
+    [0, 24, 30], [24, 20, 44], [44, 24, 26], [68, 20, 40], [88, 22, 20],
+    [116, 16, 18], [170, 14, 22],
+    [186, 24, 42], [210, 20, 28], [230, 26, 48], [256, 20, 30], [276, 24, 36],
+  ];
+  for (const [x, w, h] of blds) {
+    const top = G - h;
+    px(x, top, w, h, "wall");
+    px(x + 1, top - 3, w - 2, 3, "roof"); // mansard cap
+    for (let wy = top + 4; wy < G - 3; wy += 7) {
+      for (let wx = x + 3; wx < x + w - 3; wx += 6) px(wx, wy, 3, 4, "win");
+    }
+  }
+
+  // Eiffel Tower.
+  px(cx - 1, 4, 2, 4, "iron"); // antenna
+  px(cx - 1, 8, 2, 7, "iron"); // spire
+  px(cx - 3, 15, 6, 2, "iron"); // top platform
+  px(cx - 1, 17, 2, 6, "iron"); // neck
+  px(cx - 3, 23, 6, 2, "iron"); // 2nd platform
+  px(cx - 2, 25, 4, 5, "iron");
+  px(cx - 3, 30, 6, 5, "iron");
+  px(cx - 5, 35, 10, 3, "iron");
+  px(cx - 14, 39, 28, 3, "iron"); // first platform (wide deck)
+  // Splayed legs (staircase) forming the arch.
+  for (let y = 42; y < G; y += 2) {
+    const p = (y - 42) / (G - 42);
+    const outer = Math.round(cx - 5 - p * 13);
+    const inner = Math.round(cx - 2 - p * 7);
+    px(outer, y, inner - outer, 2, "iron");
+    px(2 * cx - inner, y, inner - outer, 2, "iron");
+  }
+  px(cx - 9, 56, 18, 1, "iron"); // lattice cross-bars
+  px(cx - 13, 70, 26, 1, "iron");
+
+  // Top-left celestial body, clear of the toggle. Sun (day): blocky disc + rays.
+  const sx = 30, sy = 12;
+  px(sx, sy, 10, 10, "sun");
+  px(sx + 3, sy - 4, 4, 3, "sun"); px(sx + 3, sy + 11, 4, 3, "sun");
+  px(sx - 4, sy + 3, 3, 4, "sun"); px(sx + 11, sy + 3, 3, 4, "sun");
+  // Moon (night): a pixel disc minus an offset disc = crescent.
+  const disc = (dcx, dcy, r, cls) => {
+    for (let dy = -r; dy <= r; dy++) {
+      const half = Math.round(Math.sqrt(r * r - dy * dy));
+      if (half > 0) px(dcx - half, dcy + dy, half * 2, 1, cls);
+    }
+  };
+  disc(35, 18, 6, "moon");
+  disc(39, 16, 6, "moon-carve");
+
+  // Stars (night only).
+  for (const [x, y] of [[62, 14], [96, 9], [120, 20], [200, 12], [228, 8], [270, 26], [186, 16], [16, 40], [290, 18], [48, 26]])
+    px(x, y, 2, 2, "star");
+
+  px(0, G, W, 2, "ground");
+
+  return (
+    `<svg class="paris" viewBox="0 0 ${W} ${G + 2}" preserveAspectRatio="xMidYMax meet" aria-hidden="true">` +
+    P.join("") +
+    `</svg>`
+  );
+}
+
 function renderGallery(cfg, manifest) {
   const items = [...manifest.items].sort((a, b) =>
     (b.updatedAt || "").localeCompare(a.updatedAt || "")
@@ -312,95 +387,256 @@ function renderGallery(cfg, manifest) {
   const fmt = (iso) => {
     if (!iso) return "";
     const d = new Date(iso);
-    return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+    return d
+      .toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })
+      .toUpperCase();
   };
 
   const sections = themeNames
-    .map((name) => {
+    .map((name, i) => {
       const cards = themes[name]
         .map(
           (it) => `
           <a class="card" href="./r/${it.id}/" data-title="${escapeHtml(it.title.toLowerCase())}">
+            <span class="corner"></span>
             <span class="card-title">${escapeHtml(it.title)}</span>
             <span class="card-meta">${fmt(it.updatedAt || it.createdAt)}</span>
           </a>`
         )
         .join("");
       return `
-        <section class="theme" data-theme="${escapeHtml(name.toLowerCase())}">
-          <h2>${escapeHtml(name)} <span class="chip">${themes[name].length}</span></h2>
+        <section class="district" style="--acc:var(--a${i % 4})" data-theme="${escapeHtml(name.toLowerCase())}">
+          <div class="sign">
+            <div class="awning"></div>
+            <div class="plaque"><span class="plaque-name">${escapeHtml(name)}</span><span class="token">${themes[name].length}</span></div>
+          </div>
           <div class="grid">${cards}</div>
         </section>`;
     })
     .join("");
 
-  const empty = `<p class="empty">Nothing published yet. Run <code>sharelinks publish ./report.html</code>.</p>`;
+  const empty = `
+    <div class="empty">
+      <p class="empty-line">Rien à voir ici… pour l'instant.</p>
+      <p class="empty-sub">Publish your first report:</p>
+      <code>sharelinks publish ./report.html</code>
+    </div>`;
+
+  const title = escapeHtml(cfg.title || "My Reports");
 
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(cfg.title || "My Reports")}</title>
+<title>${title}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #f6f7f9; --fg: #16181d; --muted: #6b7280; --card: #ffffff;
-    --line: #e6e8ec; --accent: #3b5bdb; --chip: #eef1f8;
+    --bg: oklch(0.965 0.014 85); --panel: oklch(0.93 0.02 84);
+    --card: oklch(0.99 0.012 85); --ink: oklch(0.30 0.035 265);
+    --muted: oklch(0.50 0.03 265); --frame: oklch(0.30 0.035 265);
+    --shadow: oklch(0.30 0.035 265 / 0.85);
+    --a0: oklch(0.66 0.11 235); --a1: oklch(0.70 0.12 78);
+    --a2: oklch(0.56 0.17 25);  --a3: oklch(0.54 0.10 155);
+    --sky-top: oklch(0.90 0.05 238); --sky-bot: oklch(0.965 0.014 85);
+    --wall: oklch(0.85 0.02 78); --roof: oklch(0.55 0.03 250);
+    --win: oklch(0.52 0.05 255); --iron: oklch(0.42 0.03 60);
+    --sun: oklch(0.78 0.13 78); --moon: oklch(0.90 0.05 90);
+    --star: oklch(0.60 0.05 250);
   }
+  :root[data-theme="night"] { color-scheme: dark; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="day"]) { color-scheme: dark; } }
+  :root[data-theme="night"], :root:not([data-theme="day"]) {}
+  /* Night palette */
+  ${""}
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#0d0f14; --fg:#e8eaed; --muted:#9aa2b1; --card:#161a22;
-            --line:#252b36; --accent:#7aa2ff; --chip:#1d2330; }
+    :root:not([data-theme="day"]) {
+      --bg: oklch(0.22 0.045 265); --panel: oklch(0.27 0.045 265);
+      --card: oklch(0.285 0.05 265); --ink: oklch(0.93 0.02 85);
+      --muted: oklch(0.72 0.03 250); --frame: oklch(0.93 0.02 85);
+      --shadow: oklch(0.12 0.04 265 / 0.9);
+      --a0: oklch(0.74 0.11 235); --a1: oklch(0.82 0.13 82);
+      --a2: oklch(0.66 0.17 25);  --a3: oklch(0.64 0.10 155);
+      --sky-top: oklch(0.16 0.05 265); --sky-bot: oklch(0.27 0.05 265);
+      --wall: oklch(0.31 0.04 265); --roof: oklch(0.24 0.04 265);
+      --win: oklch(0.82 0.13 82); --iron: oklch(0.55 0.04 265);
+      --sun: oklch(0.78 0.13 78); --moon: oklch(0.86 0.09 88);
+      --star: oklch(0.92 0.03 90);
+    }
   }
+  :root[data-theme="night"] {
+    --bg: oklch(0.22 0.045 265); --panel: oklch(0.27 0.045 265);
+    --card: oklch(0.285 0.05 265); --ink: oklch(0.93 0.02 85);
+    --muted: oklch(0.72 0.03 250); --frame: oklch(0.93 0.02 85);
+    --shadow: oklch(0.12 0.04 265 / 0.9);
+    --a0: oklch(0.74 0.11 235); --a1: oklch(0.82 0.13 82);
+    --a2: oklch(0.66 0.17 25);  --a3: oklch(0.64 0.10 155);
+    --sky-top: oklch(0.16 0.05 265); --sky-bot: oklch(0.27 0.05 265);
+    --wall: oklch(0.31 0.04 265); --roof: oklch(0.24 0.04 265);
+    --win: oklch(0.82 0.13 82); --iron: oklch(0.55 0.04 265);
+    --sun: oklch(0.78 0.13 78); --moon: oklch(0.86 0.09 88);
+    --star: oklch(0.92 0.03 90);
+  }
+
   * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg);
-    font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
-  header { padding:48px 24px 8px; max-width:960px; margin:0 auto; }
-  h1 { margin:0 0 4px; font-size:28px; letter-spacing:-0.02em; }
-  .sub { color:var(--muted); margin:0 0 20px; }
-  .search { width:100%; padding:11px 14px; border:1px solid var(--line);
-    border-radius:10px; background:var(--card); color:var(--fg); font-size:15px; }
-  main { max-width:960px; margin:0 auto; padding:8px 24px 64px; }
-  .theme { margin-top:34px; }
-  .theme h2 { font-size:15px; text-transform:uppercase; letter-spacing:0.06em;
-    color:var(--muted); display:flex; align-items:center; gap:8px; margin:0 0 14px; }
-  .chip { background:var(--chip); color:var(--muted); border-radius:999px;
-    font-size:12px; padding:2px 9px; letter-spacing:0; }
-  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px; }
-  .card { display:flex; flex-direction:column; gap:6px; padding:16px 18px;
-    background:var(--card); border:1px solid var(--line); border-radius:12px;
-    text-decoration:none; color:var(--fg); transition:border-color .12s, transform .12s; }
-  .card:hover { border-color:var(--accent); transform:translateY(-2px); }
-  .card-title { font-weight:600; letter-spacing:-0.01em; }
-  .card-meta { color:var(--muted); font-size:13px; }
-  .empty { color:var(--muted); }
-  footer { max-width:960px; margin:0 auto; padding:0 24px 48px; color:var(--muted); font-size:13px; }
-  code { background:var(--chip); padding:1px 6px; border-radius:6px; font-size:13px; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: "Bricolage Grotesque", system-ui, sans-serif;
+    background-image: radial-gradient(var(--panel) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .pixel { font-family: "Silkscreen", ui-monospace, monospace; }
+
+  /* Sky + skyline */
+  .sky { position: relative; width: 100%; overflow: hidden;
+    background: linear-gradient(var(--sky-top), var(--sky-bot));
+    border-bottom: 3px solid var(--frame); }
+  .paris { display: block; width: 100%; max-width: 1500px; margin: 0 auto;
+    height: auto; image-rendering: pixelated; shape-rendering: crispEdges; }
+  .wall { fill: var(--wall); } .roof { fill: var(--roof); } .win { fill: var(--win); }
+  .iron { fill: var(--iron); } .ground { fill: var(--frame); }
+  .sun { fill: var(--sun); } .moon { fill: var(--moon); } .moon-carve { fill: var(--sky-top); }
+  .star { fill: var(--star); }
+  .moon, .moon-carve, .star { display: none; }
+  :root[data-theme="night"] .sun { display: none; }
+  :root[data-theme="night"] .moon, :root[data-theme="night"] .moon-carve,
+  :root[data-theme="night"] .star { display: block; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="day"]) .sun { display: none; }
+    :root:not([data-theme="day"]) .moon, :root:not([data-theme="day"]) .moon-carve,
+    :root:not([data-theme="day"]) .star { display: block; }
+  }
+
+  /* Day/night toggle */
+  .toggle { position: absolute; top: 14px; right: 16px; z-index: 3;
+    background: var(--card); color: var(--ink); border: 3px solid var(--frame);
+    box-shadow: 4px 4px 0 var(--shadow); cursor: pointer; padding: 7px 9px 5px;
+    line-height: 1; font-size: 15px; transition: transform .15s cubic-bezier(.16,1,.3,1), box-shadow .15s; }
+  .toggle:hover { transform: translate(-1px,-2px); box-shadow: 6px 6px 0 var(--shadow); }
+  .toggle:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--shadow); }
+  .i-moon { display: none; }
+  :root[data-theme="night"] .i-sun { display: none; }
+  :root[data-theme="night"] .i-moon { display: inline; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="day"]) .i-sun { display: none; }
+    :root:not([data-theme="day"]) .i-moon { display: inline; }
+  }
+
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 22px; }
+  .masthead { padding: 26px 0 8px; }
+  h1 { margin: 0; font-family: "Silkscreen", monospace; font-weight: 700;
+    font-size: clamp(22px, 5.2vw, 40px); letter-spacing: 0.02em; line-height: 1.05;
+    color: var(--ink); text-shadow: 3px 3px 0 var(--shadow); }
+  .sub { font-family: "Silkscreen", monospace; font-size: 11px; letter-spacing: 0.04em;
+    color: var(--muted); margin: 16px 0 18px; }
+
+  .search { width: 100%; max-width: 380px; padding: 12px 14px 10px;
+    background: var(--card); color: var(--ink); border: 3px solid var(--frame);
+    box-shadow: 4px 4px 0 var(--shadow); font-family: "Silkscreen", monospace;
+    font-size: 11px; outline: none; }
+  .search::placeholder { color: var(--muted); }
+  .search:focus { box-shadow: 4px 4px 0 var(--a0); border-color: var(--a0); }
+
+  main { padding: 8px 0 72px; }
+
+  /* District (theme) */
+  .district { margin-top: 40px; }
+  .sign { display: inline-block; margin-bottom: 18px; }
+  .awning { height: 12px; width: 100%;
+    background: repeating-linear-gradient(90deg,
+      var(--acc) 0 10px, color-mix(in oklch, var(--acc) 42%, white) 10px 20px);
+    border: 3px solid var(--frame); border-bottom: none; }
+  .plaque { display: flex; align-items: center; gap: 12px;
+    background: var(--acc); border: 3px solid var(--frame);
+    box-shadow: 4px 4px 0 var(--shadow); padding: 8px 12px; }
+  .plaque-name { font-family: "Silkscreen", monospace; font-weight: 700; font-size: 13px;
+    letter-spacing: 0.03em; color: oklch(0.20 0.03 265); }
+  .token { font-family: "Silkscreen", monospace; font-size: 11px; color: var(--ink);
+    background: var(--card); border: 2px solid var(--frame); padding: 3px 7px 1px; }
+
+  .grid { display: grid; gap: 18px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .card { position: relative; display: flex; flex-direction: column; gap: 12px;
+    min-height: 104px; padding: 16px 16px 14px; text-decoration: none;
+    background: var(--card); color: var(--ink);
+    border: 3px solid var(--frame); box-shadow: 5px 5px 0 var(--shadow);
+    transition: transform .16s cubic-bezier(.16,1,.3,1), box-shadow .16s cubic-bezier(.16,1,.3,1); }
+  .card:hover { transform: translate(-2px, -3px); box-shadow: 8px 9px 0 var(--acc); }
+  .corner { position: absolute; top: 8px; right: 8px; width: 8px; height: 8px;
+    background: var(--acc); box-shadow: -4px 0 0 var(--acc), 0 4px 0 var(--acc); }
+  .card-title { font-weight: 700; font-size: 17px; line-height: 1.2;
+    letter-spacing: -0.01em; padding-right: 14px; max-width: 34ch; }
+  .card-meta { margin-top: auto; font-family: "Silkscreen", monospace; font-size: 9px;
+    letter-spacing: 0.06em; color: var(--muted); }
+
+  .empty { max-width: 460px; margin: 48px auto; text-align: center; }
+  .empty-line { font-family: "Silkscreen", monospace; font-size: 15px; color: var(--ink); }
+  .empty-sub { color: var(--muted); margin: 18px 0 8px; }
+  .empty code, code { font-family: "Silkscreen", monospace; font-size: 11px;
+    background: var(--panel); color: var(--ink); border: 2px solid var(--frame);
+    padding: 6px 9px; display: inline-block; }
+
+  footer { border-top: 3px solid var(--frame); }
+  .foot { font-family: "Silkscreen", monospace; font-size: 9px; letter-spacing: 0.06em;
+    color: var(--muted); padding: 18px 0 40px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .card, .toggle { transition: none; }
+  }
 </style>
 </head>
 <body>
-  <header>
-    <h1>${escapeHtml(cfg.title || "My Reports")}</h1>
-    <p class="sub">${count} report${count === 1 ? "" : "s"} · grouped by theme</p>
-    <input id="q" class="search" type="search" placeholder="Filter reports…" autocomplete="off">
-  </header>
-  <main id="list">
-    ${count ? sections : empty}
-  </main>
-  <footer>Published with sharelinks → Surge.sh</footer>
+  <div class="sky">
+    <button class="toggle" id="toggle" type="button" aria-label="Toggle day and night">
+      <span class="i-sun">&#9728;</span><span class="i-moon">&#9790;</span>
+    </button>
+    ${parisSvg()}
+  </div>
+  <div class="wrap">
+    <header class="masthead">
+      <h1>${title}</h1>
+      <p class="sub">${count} rapport${count === 1 ? "" : "s"} &middot; ${themeNames.length} quartier${themeNames.length === 1 ? "" : "s"}</p>
+      <input id="q" class="search" type="search" placeholder="Filtrer les rapports&hellip;" autocomplete="off" aria-label="Filter reports">
+    </header>
+    <main id="list">
+      ${count ? sections : empty}
+    </main>
+  </div>
+  <footer><div class="wrap"><p class="foot">FAIT AVEC SHARELINKS &middot; &Agrave; PARIS, EN PIXELS</p></div></footer>
   <script>
-    const q = document.getElementById('q');
-    q && q.addEventListener('input', () => {
-      const t = q.value.trim().toLowerCase();
-      document.querySelectorAll('.theme').forEach(sec => {
-        let any = false;
-        sec.querySelectorAll('.card').forEach(c => {
-          const hit = !t || c.dataset.title.includes(t) || sec.dataset.theme.includes(t);
-          c.style.display = hit ? '' : 'none';
-          if (hit) any = true;
-        });
-        sec.style.display = any ? '' : 'none';
+    (function () {
+      var root = document.documentElement;
+      try { var saved = localStorage.getItem('sl-theme'); if (saved) root.setAttribute('data-theme', saved); } catch (e) {}
+      var btn = document.getElementById('toggle');
+      btn && btn.addEventListener('click', function () {
+        var cur = root.getAttribute('data-theme');
+        if (!cur) {
+          var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          cur = dark ? 'night' : 'day';
+        }
+        var next = cur === 'night' ? 'day' : 'night';
+        root.setAttribute('data-theme', next);
+        try { localStorage.setItem('sl-theme', next); } catch (e) {}
       });
-    });
+      var q = document.getElementById('q');
+      q && q.addEventListener('input', function () {
+        var t = q.value.trim().toLowerCase();
+        var list = document.querySelectorAll('.district');
+        for (var i = 0; i < list.length; i++) {
+          var sec = list[i], any = false, cards = sec.querySelectorAll('.card');
+          for (var j = 0; j < cards.length; j++) {
+            var hit = !t || cards[j].dataset.title.indexOf(t) > -1 || sec.dataset.theme.indexOf(t) > -1;
+            cards[j].style.display = hit ? '' : 'none';
+            if (hit) any = true;
+          }
+          sec.style.display = any ? '' : 'none';
+        }
+      });
+    })();
   </script>
 </body>
 </html>`;
@@ -433,6 +669,12 @@ async function cmdDeploy() {
   buildSite(cfg, loadManifest());
   deploy(cfg);
   console.log(`✓ Gallery live: https://${cfg.domain}`);
+}
+
+function cmdBuild() {
+  const cfg = loadConfig();
+  buildSite(cfg.domain ? cfg : { ...cfg, domain: "preview.local" }, loadManifest());
+  console.log(`✓ Built ${path.join(BUILD_DIR, "index.html")}`);
 }
 
 function cmdList() {
@@ -528,6 +770,7 @@ async function main() {
     case "setup": return void (await cmdSetup(flags));
     case "publish": return void (await cmdPublish(positional, flags));
     case "deploy": return void (await cmdDeploy());
+    case "build": return cmdBuild();
     case "list": return cmdList();
     case "info": return cmdInfo();
     case "remove": return void (await cmdRemove(positional));
