@@ -27,11 +27,38 @@ That installs the `sharelinks` CLI globally and drops the Claude Code skill into
 
 ## Use it in Claude Code
 
-Just say it in plain English:
+Three ways, from most explicit to fully automatic:
 
-> **publish this report with sharelinks**
+**1. Slash command**
+```
+/sharelinks ./report.html      # publish a file (Claude infers the theme)
+/sharelinks list               # see your whole gallery
+/sharelinks rename my-reports  # pick a nicer subdomain
+```
 
-Claude reads the file, infers a theme, publishes it, and hands you the link.
+**2. Plain English** — just say *"publish this report with sharelinks"*. Claude
+reads the file, infers a theme, publishes it, and hands you the link.
+
+**3. Auto-suggest (opt-in)** — install with `--suggest` and whenever Claude Code
+writes a standalone HTML report, it will offer to publish it. It only ever
+*offers* — nothing is published without your go-ahead. Enable during install:
+
+```bash
+bash install.sh --suggest
+```
+
+or later:
+
+```bash
+node hooks/register.js ~/.claude/settings.json 'node "$HOME/.claude/hooks/sharelinks-suggest-publish.js"'
+```
+
+Turn it off any time:
+
+```bash
+node hooks/register.js --remove ~/.claude/settings.json
+```
+
 The first publish creates your free Surge account from your email — no browser.
 
 ## Use it directly (CLI)
@@ -57,6 +84,10 @@ Re-publishing a file with the same title updates it in place and keeps its URL.
   `npx surge`.
 - **Skill (`.claude/skills/sharelinks/`)** — the AI layer: Claude reads each file
   and picks the theme/title before calling the CLI.
+- **Slash command (`.claude/commands/sharelinks.md`)** — `/sharelinks` for tight,
+  explicit invocation with arguments.
+- **Hook (`hooks/suggest-publish.js`)** — optional PostToolUse hook that spots a
+  freshly written standalone report and nudges Claude to offer publishing it.
 
 ## Hosting notes
 
