@@ -10,7 +10,13 @@ page, no dashboard. Hosting is free via [Surge.sh](https://surge.sh).
 
 ## Install
 
-One line from this repo:
+One line:
+
+```bash
+git clone https://github.com/drorzu/dudishareslinks && bash dudishareslinks/install.sh
+```
+
+Or, if you already have the repo:
 
 ```bash
 bash install.sh
