@@ -297,58 +297,147 @@ function buildSite(cfg, manifest) {
   fs.writeFileSync(path.join(BUILD_DIR, "200.html"), renderGallery(cfg, manifest));
 }
 
-// A hand-built pixel-art Paris skyline: Haussmann rooftops + the Eiffel Tower +
-// a sun (day) / moon + stars (night). Built as an inline SVG of blocky rects.
+// A hand-built pixel-art Paris street scene: ornate Haussmann facades (wrought-iron
+// balconies, mansard roofs, dormers, chimney pots), a café awning, plane trees,
+// street lamps, cascading wisteria, and the Eiffel Tower over the rooftops.
+// Sun + warm haze by day; crescent moon, lit windows, glowing lamps + stars by night.
 function parisSvg() {
   const W = 300; // scene width
-  const G = 78; // ground line
+  const G = 82; // street line
   const cx = 150; // Eiffel centre
   const P = [];
   const px = (x, y, w, h, cls) =>
-    P.push(`<rect class="${cls}" x="${x}" y="${y}" width="${w}" height="${h}"/>`);
+    P.push(`<rect class="${cls}" x="${Math.round(x)}" y="${Math.round(y)}" width="${w}" height="${h}"/>`);
 
-  // Row of Haussmann buildings with mansard roofs and windows. Two shorter
-  // ones (116, 170) peek out just beside the tower's splayed legs.
-  const blds = [
-    [0, 24, 30], [24, 20, 44], [44, 24, 26], [68, 20, 40], [88, 22, 20],
-    [116, 16, 18], [170, 14, 22],
-    [186, 24, 42], [210, 20, 28], [230, 26, 48], [256, 20, 30], [276, 24, 36],
-  ];
-  for (const [x, w, h] of blds) {
-    const top = G - h;
-    px(x, top, w, h, "wall");
-    px(x + 1, top - 3, w - 2, 3, "roof"); // mansard cap
-    for (let wy = top + 4; wy < G - 3; wy += 7) {
-      for (let wx = x + 3; wx < x + w - 3; wx += 6) px(wx, wy, 3, 4, "win");
+  // Distant hazy rooftops for atmospheric depth (drawn first, behind everything).
+  for (const [x, w, h] of [[6, 40, 18], [58, 52, 13], [206, 54, 17], [262, 44, 20]])
+    px(x, G - h, w, h, "haze");
+
+  // A Haussmann apartment block: stone facade, ground-floor shops, cornice,
+  // mansard roof with dormers + chimney pots, windows with a wrought-iron balcony.
+  function building(x, w, floors, opts) {
+    opts = opts || {};
+    const fh = 8, bodyH = floors * fh, top = G - bodyH;
+    px(x, top, w, bodyH, "stone"); // facade
+    px(x, G - 7, w, 7, "stone2"); // ground floor (shops), a touch darker
+    // Mansard roof: a slate trapezoid narrowing upward.
+    const rH = 6;
+    for (let k = 0; k < rH; k++) {
+      const inset = Math.floor(k * 0.8);
+      px(x + inset, top - 1 - k, w - 2 * inset, 1, "roof");
+    }
+    px(x - 1, top - 1, w + 2, 1, "cornice"); // cornice band under the roof
+    // Dormer windows poking from the roof.
+    for (const f of [0.28, 0.66]) {
+      const dx = x + Math.round(w * f);
+      px(dx, top - 5, 2, 3, "roof");
+      px(dx, top - 4, 2, 2, "win");
+    }
+    // Chimney pots on the ridge.
+    px(x + 2, top - rH - 3, 2, 4, "chimney");
+    px(x + w - 4, top - rH - 2, 2, 3, "chimney");
+    // Windows, and a wrought-iron balcony on the "noble" 2nd floor.
+    const cols = [];
+    for (let wx = x + 3; wx <= x + w - 5; wx += 6) cols.push(wx);
+    for (let f = 0; f < floors; f++) {
+      const wy = top + 2 + f * fh;
+      for (const wx of cols) px(wx, wy, 3, 5, "win");
+      if (f === 1) {
+        px(x + 1, wy + 6, w - 2, 1, "iron"); // rail
+        for (let bx = x + 1; bx < x + w - 1; bx += 2) px(bx, wy + 5, 1, 2, "iron"); // balusters
+      }
+    }
+    if (opts.cafe) awning(x + 1, w - 2); // street-level café awning
+  }
+
+  // Red-and-white striped café awning with a little scalloped hem.
+  function awning(x, w) {
+    const y = G - 9;
+    px(x - 1, y - 1, w + 2, 1, "iron");
+    for (let i = 0; i < w; i += 3) {
+      const cls = (Math.floor(i / 3) % 2) ? "awnR" : "awnW";
+      px(x + i, y, 3, 3, cls);
+      px(x + i, y + 3, 2, 1, cls); // scallop hint
     }
   }
 
-  // Eiffel Tower.
-  px(cx - 1, 4, 2, 4, "iron"); // antenna
-  px(cx - 1, 8, 2, 7, "iron"); // spire
-  px(cx - 3, 15, 6, 2, "iron"); // top platform
-  px(cx - 1, 17, 2, 6, "iron"); // neck
-  px(cx - 3, 23, 6, 2, "iron"); // 2nd platform
-  px(cx - 2, 25, 4, 5, "iron");
-  px(cx - 3, 30, 6, 5, "iron");
-  px(cx - 5, 35, 10, 3, "iron");
-  px(cx - 14, 39, 28, 3, "iron"); // first platform (wide deck)
-  // Splayed legs (staircase) forming the arch.
-  for (let y = 42; y < G; y += 2) {
-    const p = (y - 42) / (G - 42);
+  // A plane tree: trunk + a rounded foliage blob with a lit highlight.
+  function tree(x) {
+    px(x, G - 6, 2, 6, "trunk");
+    px(x - 4, G - 12, 10, 5, "leaf");
+    px(x - 3, G - 15, 8, 4, "leaf");
+    px(x - 1, G - 17, 4, 3, "leaf");
+    px(x + 1, G - 14, 3, 3, "leafHi");
+  }
+
+  // An ornate street lamp with a glowing head.
+  function lamp(x) {
+    px(x, G - 16, 1, 16, "iron");
+    px(x - 1, G - 1, 3, 1, "iron");
+    px(x - 1, G - 18, 3, 3, "lampGlow");
+    px(x - 2, G - 12, 5, 1, "iron"); // cross arm
+  }
+
+  // A wisteria in bloom: brown trunk, violet canopy, hanging blossom strands.
+  function wisteriaTree(x) {
+    px(x, G - 6, 2, 6, "trunk");
+    px(x - 5, G - 15, 12, 5, "wist");
+    px(x - 4, G - 18, 10, 4, "wist");
+    px(x - 1, G - 20, 4, 3, "wist");
+    px(x + 1, G - 17, 3, 3, "wistHi");
+    for (let s = -4; s <= 5; s += 2) {
+      const len = 3 + ((s + 6) % 4);
+      for (let k = 0; k < len; k++) px(x + s, G - 10 + k, 2, 1, k > len - 2 ? "wistHi" : "wist");
+    }
+  }
+
+  // Building row: left cluster, two low blocks flanking the tower, right cluster.
+  building(0, 30, 6, {});
+  building(30, 26, 7, {});
+  building(56, 26, 5, {});
+  building(120, 16, 3, {});
+  building(168, 16, 4, {});
+  building(186, 28, 6, {});
+  building(214, 24, 7, { cafe: true });
+  building(238, 30, 5, {});
+  building(268, 32, 6, {});
+
+  // Eiffel Tower, rising over the rooftops.
+  px(cx - 1, 6, 2, 4, "iron"); // antenna
+  px(cx - 1, 10, 2, 7, "iron"); // spire
+  px(cx - 3, 17, 6, 2, "iron"); // upper platform
+  px(cx - 1, 19, 2, 6, "iron"); // neck
+  px(cx - 3, 25, 6, 2, "iron"); // 2nd platform
+  px(cx - 2, 27, 4, 5, "iron");
+  px(cx - 3, 32, 6, 5, "iron");
+  px(cx - 5, 37, 10, 3, "iron");
+  px(cx - 14, 41, 28, 3, "iron"); // first platform (wide deck)
+  for (let y = 44; y < G; y += 2) {
+    const p = (y - 44) / (G - 44);
     const outer = Math.round(cx - 5 - p * 13);
     const inner = Math.round(cx - 2 - p * 7);
     px(outer, y, inner - outer, 2, "iron");
     px(2 * cx - inner, y, inner - outer, 2, "iron");
   }
-  px(cx - 9, 56, 18, 1, "iron"); // lattice cross-bars
-  px(cx - 13, 70, 26, 1, "iron");
+  px(cx - 9, 58, 18, 1, "iron"); // lattice cross-bars
+  px(cx - 13, 72, 26, 1, "iron");
+
+  px(0, G, W, 2, "ground"); // street line
+
+  // Foreground street furniture (in front of the facades).
+  tree(76);
+  tree(160);
+  tree(258);
+  lamp(110);
+  lamp(200);
+  wisteriaTree(92);
+  wisteriaTree(232);
 
   // Top-left celestial body, clear of the toggle. Sun (day): blocky disc + rays.
-  const sx = 30, sy = 12;
-  px(sx, sy, 10, 10, "sun");
-  px(sx + 3, sy - 4, 4, 3, "sun"); px(sx + 3, sy + 11, 4, 3, "sun");
-  px(sx - 4, sy + 3, 3, 4, "sun"); px(sx + 11, sy + 3, 3, 4, "sun");
+  const sxu = 30, syu = 12;
+  px(sxu, syu, 10, 10, "sun");
+  px(sxu + 3, syu - 4, 4, 3, "sun"); px(sxu + 3, syu + 11, 4, 3, "sun");
+  px(sxu - 4, syu + 3, 3, 4, "sun"); px(sxu + 11, syu + 3, 3, 4, "sun");
   // Moon (night): a pixel disc minus an offset disc = crescent.
   const disc = (dcx, dcy, r, cls) => {
     for (let dy = -r; dy <= r; dy++) {
@@ -360,10 +449,8 @@ function parisSvg() {
   disc(39, 16, 6, "moon-carve");
 
   // Stars (night only).
-  for (const [x, y] of [[62, 14], [96, 9], [120, 20], [200, 12], [228, 8], [270, 26], [186, 16], [16, 40], [290, 18], [48, 26]])
+  for (const [x, y] of [[62, 10], [96, 6], [128, 16], [200, 9], [228, 6], [284, 22], [186, 13], [16, 38], [292, 14], [50, 24]])
     px(x, y, 2, 2, "star");
-
-  px(0, G, W, 2, "ground");
 
   return (
     `<svg class="paris" viewBox="0 0 ${W} ${G + 2}" preserveAspectRatio="xMidYMax meet" aria-hidden="true">` +
@@ -424,6 +511,44 @@ function renderGallery(cfg, manifest) {
 
   const title = escapeHtml(cfg.title || "My Reports");
 
+  const dayVars = `
+    --bg: oklch(0.955 0.02 85); --panel: oklch(0.92 0.025 82);
+    --card: oklch(0.985 0.015 85); --ink: oklch(0.30 0.035 265);
+    --muted: oklch(0.50 0.03 265); --frame: oklch(0.30 0.035 265);
+    --shadow: oklch(0.30 0.035 265 / 0.85);
+    --a0: oklch(0.62 0.11 235); --a1: oklch(0.70 0.12 78);
+    --a2: oklch(0.56 0.17 25); --a3: oklch(0.54 0.10 155);
+    --sky-top: oklch(0.80 0.07 235); --sky-bot: oklch(0.93 0.055 78);
+    --haze: oklch(0.87 0.028 250); --stone: oklch(0.85 0.05 78);
+    --stone2: oklch(0.77 0.05 70); --roof: oklch(0.47 0.025 260);
+    --cornice: oklch(0.63 0.045 72); --win: oklch(0.55 0.06 250);
+    --iron: oklch(0.32 0.02 60); --chimney: oklch(0.52 0.08 45);
+    --leaf: oklch(0.57 0.11 145); --leafHi: oklch(0.68 0.12 140);
+    --trunk: oklch(0.42 0.05 55); --awnR: oklch(0.56 0.16 25);
+    --awnW: oklch(0.93 0.03 85); --wist: oklch(0.58 0.14 300);
+    --wistHi: oklch(0.72 0.13 305);
+    --lampGlow: oklch(0.82 0.13 82); --sun: oklch(0.80 0.13 80);
+    --moon: oklch(0.90 0.05 90); --star: oklch(0.60 0.05 250);`;
+
+  const nightVars = `
+    --bg: oklch(0.20 0.045 265); --panel: oklch(0.26 0.045 265);
+    --card: oklch(0.275 0.05 265); --ink: oklch(0.93 0.02 85);
+    --muted: oklch(0.72 0.03 250); --frame: oklch(0.93 0.02 85);
+    --shadow: oklch(0.10 0.04 265 / 0.9);
+    --a0: oklch(0.74 0.11 235); --a1: oklch(0.82 0.13 82);
+    --a2: oklch(0.66 0.17 25); --a3: oklch(0.64 0.10 155);
+    --sky-top: oklch(0.15 0.05 265); --sky-bot: oklch(0.28 0.055 260);
+    --haze: oklch(0.26 0.04 262); --stone: oklch(0.30 0.035 262);
+    --stone2: oklch(0.26 0.035 262); --roof: oklch(0.19 0.03 262);
+    --cornice: oklch(0.35 0.035 262); --win: oklch(0.82 0.13 82);
+    --iron: oklch(0.46 0.03 262); --chimney: oklch(0.32 0.05 40);
+    --leaf: oklch(0.34 0.06 150); --leafHi: oklch(0.42 0.07 145);
+    --trunk: oklch(0.28 0.03 50); --awnR: oklch(0.55 0.15 25);
+    --awnW: oklch(0.80 0.04 85); --wist: oklch(0.54 0.13 300);
+    --wistHi: oklch(0.66 0.13 305);
+    --lampGlow: oklch(0.86 0.15 84); --sun: oklch(0.80 0.13 80);
+    --moon: oklch(0.88 0.08 88); --star: oklch(0.92 0.03 90);`;
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -434,51 +559,10 @@ function renderGallery(cfg, manifest) {
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,400..800&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: oklch(0.965 0.014 85); --panel: oklch(0.93 0.02 84);
-    --card: oklch(0.99 0.012 85); --ink: oklch(0.30 0.035 265);
-    --muted: oklch(0.50 0.03 265); --frame: oklch(0.30 0.035 265);
-    --shadow: oklch(0.30 0.035 265 / 0.85);
-    --a0: oklch(0.66 0.11 235); --a1: oklch(0.70 0.12 78);
-    --a2: oklch(0.56 0.17 25);  --a3: oklch(0.54 0.10 155);
-    --sky-top: oklch(0.90 0.05 238); --sky-bot: oklch(0.965 0.014 85);
-    --wall: oklch(0.85 0.02 78); --roof: oklch(0.55 0.03 250);
-    --win: oklch(0.52 0.05 255); --iron: oklch(0.42 0.03 60);
-    --sun: oklch(0.78 0.13 78); --moon: oklch(0.90 0.05 90);
-    --star: oklch(0.60 0.05 250);
-  }
-  :root[data-theme="night"] { color-scheme: dark; }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="day"]) { color-scheme: dark; } }
-  :root[data-theme="night"], :root:not([data-theme="day"]) {}
-  /* Night palette */
-  ${""}
+  :root { ${dayVars} }
+  :root[data-theme="night"] { color-scheme: dark; ${nightVars} }
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="day"]) {
-      --bg: oklch(0.22 0.045 265); --panel: oklch(0.27 0.045 265);
-      --card: oklch(0.285 0.05 265); --ink: oklch(0.93 0.02 85);
-      --muted: oklch(0.72 0.03 250); --frame: oklch(0.93 0.02 85);
-      --shadow: oklch(0.12 0.04 265 / 0.9);
-      --a0: oklch(0.74 0.11 235); --a1: oklch(0.82 0.13 82);
-      --a2: oklch(0.66 0.17 25);  --a3: oklch(0.64 0.10 155);
-      --sky-top: oklch(0.16 0.05 265); --sky-bot: oklch(0.27 0.05 265);
-      --wall: oklch(0.31 0.04 265); --roof: oklch(0.24 0.04 265);
-      --win: oklch(0.82 0.13 82); --iron: oklch(0.55 0.04 265);
-      --sun: oklch(0.78 0.13 78); --moon: oklch(0.86 0.09 88);
-      --star: oklch(0.92 0.03 90);
-    }
-  }
-  :root[data-theme="night"] {
-    --bg: oklch(0.22 0.045 265); --panel: oklch(0.27 0.045 265);
-    --card: oklch(0.285 0.05 265); --ink: oklch(0.93 0.02 85);
-    --muted: oklch(0.72 0.03 250); --frame: oklch(0.93 0.02 85);
-    --shadow: oklch(0.12 0.04 265 / 0.9);
-    --a0: oklch(0.74 0.11 235); --a1: oklch(0.82 0.13 82);
-    --a2: oklch(0.66 0.17 25);  --a3: oklch(0.64 0.10 155);
-    --sky-top: oklch(0.16 0.05 265); --sky-bot: oklch(0.27 0.05 265);
-    --wall: oklch(0.31 0.04 265); --roof: oklch(0.24 0.04 265);
-    --win: oklch(0.82 0.13 82); --iron: oklch(0.55 0.04 265);
-    --sun: oklch(0.78 0.13 78); --moon: oklch(0.86 0.09 88);
-    --star: oklch(0.92 0.03 90);
+    :root:not([data-theme="day"]) { color-scheme: dark; ${nightVars} }
   }
 
   * { box-sizing: border-box; }
@@ -497,8 +581,13 @@ function renderGallery(cfg, manifest) {
     border-bottom: 3px solid var(--frame); }
   .paris { display: block; width: 100%; max-width: 1500px; margin: 0 auto;
     height: auto; image-rendering: pixelated; shape-rendering: crispEdges; }
-  .wall { fill: var(--wall); } .roof { fill: var(--roof); } .win { fill: var(--win); }
-  .iron { fill: var(--iron); } .ground { fill: var(--frame); }
+  .haze { fill: var(--haze); } .stone { fill: var(--stone); } .stone2 { fill: var(--stone2); }
+  .roof { fill: var(--roof); } .cornice { fill: var(--cornice); } .win { fill: var(--win); }
+  .iron { fill: var(--iron); } .chimney { fill: var(--chimney); }
+  .leaf { fill: var(--leaf); } .leafHi { fill: var(--leafHi); } .trunk { fill: var(--trunk); }
+  .awnR { fill: var(--awnR); } .awnW { fill: var(--awnW); } .wist { fill: var(--wist); }
+  .wistHi { fill: var(--wistHi); }
+  .lampGlow { fill: var(--lampGlow); } .ground { fill: var(--frame); }
   .sun { fill: var(--sun); } .moon { fill: var(--moon); } .moon-carve { fill: var(--sky-top); }
   .star { fill: var(--star); }
   .moon, .moon-carve, .star { display: none; }
