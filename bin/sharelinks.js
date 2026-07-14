@@ -97,6 +97,24 @@ function shortHash(s) {
   return crypto.createHash("sha256").update(s).digest("hex").slice(0, 6);
 }
 
+// AES-256-GCM with a PBKDF2-derived key. Output shape (ciphertext||tag) and
+// params match the browser WebCrypto decrypt in the gallery page.
+const PBKDF2_ITER = 150000;
+function encryptString(password, plaintext) {
+  const salt = crypto.randomBytes(16);
+  const iv = crypto.randomBytes(12);
+  const key = crypto.pbkdf2Sync(password, salt, PBKDF2_ITER, 32, "sha256");
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const enc = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return {
+    salt: salt.toString("base64"),
+    iv: iv.toString("base64"),
+    data: Buffer.concat([enc, tag]).toString("base64"),
+    iterations: PBKDF2_ITER,
+  };
+}
+
 function fail(msg) {
   console.error("✖ " + msg);
   process.exit(1);
@@ -204,13 +222,60 @@ async function cmdSetup(flags) {
     cfg.domain ||
     `sharelinks-${shortHash(email + Date.now())}.surge.sh`;
 
-  saveConfig({ ...cfg, email, password, token, domain });
+  // Optional: lock the gallery behind a password (client-side encryption).
+  const gp = flags["gallery-password"];
+  const galleryPassword =
+    gp && gp !== true ? String(gp) : cfg.galleryPassword || undefined;
+
+  saveConfig({ ...cfg, email, password, token, domain, galleryPassword });
 
   console.log(`✓ Account ready.`);
   console.log(`  Domain : https://${domain}`);
   console.log(`  Config : ${CONFIG_PATH}`);
+  if (galleryPassword) {
+    console.log(`  Gallery: password-protected 🔒`);
+  } else {
+    console.log(`  Gallery: public (optional — lock it later with: sharelinks password <password>)`);
+  }
   console.log(`\nPublish your first report:  sharelinks publish ./report.html`);
-  return { email, password, token, domain };
+  return { email, password, token, domain, galleryPassword };
+}
+
+// ---------------------------------------------------------------------------
+// password — optionally lock the gallery page behind a password
+// ---------------------------------------------------------------------------
+
+async function cmdPassword(positional, flags) {
+  const cfg = await ensureReady();
+  const arg = positional[0];
+
+  if (flags.clear || arg === "clear" || arg === "off" || arg === "remove") {
+    if (!cfg.galleryPassword) return console.log("Gallery is already public — nothing to remove.");
+    delete cfg.galleryPassword;
+    saveConfig(cfg);
+    buildSite(cfg, loadManifest());
+    deploy(cfg);
+    console.log("✓ Password removed — the gallery is public again.");
+    return;
+  }
+
+  const pw = arg || (typeof flags.password === "string" ? flags.password : "") || process.env.SHARELINKS_GALLERY_PASSWORD;
+  if (!pw) {
+    console.log(
+      cfg.galleryPassword
+        ? "Gallery is password-protected 🔒\n  Change:  sharelinks password <new-password>\n  Remove:  sharelinks password clear"
+        : "Gallery is public.\n  Lock it:  sharelinks password <password>"
+    );
+    return;
+  }
+
+  cfg.galleryPassword = String(pw);
+  saveConfig(cfg);
+  buildSite(cfg, loadManifest());
+  deploy(cfg);
+  console.log("✓ Gallery locked 🔒 — visitors need the password to see your reports.");
+  console.log("  Note: the report list is encrypted client-side, but individual report");
+  console.log("  URLs (…/r/<id>/) stay reachable to anyone who has the exact link.");
 }
 
 async function ensureReady(flags = {}) {
@@ -509,6 +574,25 @@ function renderGallery(cfg, manifest) {
       <code>sharelinks publish ./report.html</code>
     </div>`;
 
+  const content = count ? sections : empty;
+  const locked = !!cfg.galleryPassword;
+  const lockData = locked ? encryptString(cfg.galleryPassword, content) : null;
+
+  const lockUi = `
+    <div class="lock">
+      <p class="lock-line pixel">&#128274; Galerie privée</p>
+      <form id="lockform" class="lockform">
+        <input id="pw" class="search" type="password" placeholder="Mot de passe&hellip;" autocomplete="current-password" aria-label="Password">
+        <button class="unlock pixel" type="submit">Entrer</button>
+      </form>
+      <p id="lockerr" class="lock-err" role="alert"></p>
+    </div>`;
+
+  const mainInner = locked ? lockUi : content;
+  const subtitle = locked
+    ? `<span class="pixel">&#128274; galerie privée</span>`
+    : `${count} rapport${count === 1 ? "" : "s"} &middot; ${themeNames.length} quartier${themeNames.length === 1 ? "" : "s"}`;
+
   const title = escapeHtml(cfg.title || "My Reports");
 
   const dayVars = `
@@ -662,6 +746,20 @@ function renderGallery(cfg, manifest) {
   .card-meta { margin-top: auto; font-family: "Silkscreen", monospace; font-size: 9px;
     letter-spacing: 0.06em; color: var(--muted); }
 
+  /* Password lock */
+  .lock { max-width: 420px; margin: 40px 0 60px; }
+  .lock-line { font-size: 14px; color: var(--ink); margin: 0; }
+  .lockform { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+  .lock .search { max-width: 240px; }
+  .unlock { background: var(--a0); color: oklch(0.20 0.03 265);
+    border: 3px solid var(--frame); box-shadow: 4px 4px 0 var(--shadow); cursor: pointer;
+    padding: 12px 16px 10px; font-size: 11px;
+    transition: transform .15s cubic-bezier(.16,1,.3,1), box-shadow .15s; }
+  .unlock:hover { transform: translate(-1px,-2px); box-shadow: 6px 6px 0 var(--shadow); }
+  .unlock:active { transform: translate(2px,2px); box-shadow: 1px 1px 0 var(--shadow); }
+  .lock-err { font-family: "Silkscreen", monospace; font-size: 10px; color: var(--a2);
+    margin: 12px 0 0; min-height: 12px; letter-spacing: 0.04em; }
+
   .empty { max-width: 460px; margin: 48px auto; text-align: center; }
   .empty-line { font-family: "Silkscreen", monospace; font-size: 15px; color: var(--ink); }
   .empty-sub { color: var(--muted); margin: 18px 0 8px; }
@@ -688,14 +786,15 @@ function renderGallery(cfg, manifest) {
   <div class="wrap">
     <header class="masthead">
       <h1>${title}</h1>
-      <p class="sub">${count} rapport${count === 1 ? "" : "s"} &middot; ${themeNames.length} quartier${themeNames.length === 1 ? "" : "s"}</p>
-      <input id="q" class="search" type="search" placeholder="Filtrer les rapports&hellip;" autocomplete="off" aria-label="Filter reports">
+      <p class="sub">${subtitle}</p>
+      <input id="q" class="search" type="search" placeholder="Filtrer les rapports&hellip;" autocomplete="off" aria-label="Filter reports"${locked ? ' style="display:none"' : ""}>
     </header>
     <main id="list">
-      ${count ? sections : empty}
+      ${mainInner}
     </main>
   </div>
   <footer><div class="wrap"><p class="foot">FAIT AVEC SHARELINKS &middot; &Agrave; PARIS, EN PIXELS</p></div></footer>
+  <script id="lockdata" type="application/json">${lockData ? JSON.stringify(lockData) : "null"}</script>
   <script>
     (function () {
       var root = document.documentElement;
@@ -711,20 +810,63 @@ function renderGallery(cfg, manifest) {
         root.setAttribute('data-theme', next);
         try { localStorage.setItem('sl-theme', next); } catch (e) {}
       });
+
       var q = document.getElementById('q');
-      q && q.addEventListener('input', function () {
-        var t = q.value.trim().toLowerCase();
-        var list = document.querySelectorAll('.district');
-        for (var i = 0; i < list.length; i++) {
-          var sec = list[i], any = false, cards = sec.querySelectorAll('.card');
-          for (var j = 0; j < cards.length; j++) {
-            var hit = !t || cards[j].dataset.title.indexOf(t) > -1 || sec.dataset.theme.indexOf(t) > -1;
-            cards[j].style.display = hit ? '' : 'none';
-            if (hit) any = true;
+      function initFilter() {
+        if (!q) return;
+        q.addEventListener('input', function () {
+          var t = q.value.trim().toLowerCase();
+          var list = document.querySelectorAll('.district');
+          for (var i = 0; i < list.length; i++) {
+            var sec = list[i], any = false, cards = sec.querySelectorAll('.card');
+            for (var j = 0; j < cards.length; j++) {
+              var hit = !t || cards[j].dataset.title.indexOf(t) > -1 || sec.dataset.theme.indexOf(t) > -1;
+              cards[j].style.display = hit ? '' : 'none';
+              if (hit) any = true;
+            }
+            sec.style.display = any ? '' : 'none';
           }
-          sec.style.display = any ? '' : 'none';
+        });
+      }
+
+      var LOCK = JSON.parse(document.getElementById('lockdata').textContent || 'null');
+      if (!LOCK) { initFilter(); return; }
+
+      var list = document.getElementById('list');
+      function b64(s) { return Uint8Array.from(atob(s), function (c) { return c.charCodeAt(0); }); }
+      async function decryptGallery(pw) {
+        var base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+        var key = await crypto.subtle.deriveKey(
+          { name: 'PBKDF2', salt: b64(LOCK.salt), iterations: LOCK.iterations, hash: 'SHA-256' },
+          base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+        var buf = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(LOCK.iv) }, key, b64(LOCK.data));
+        return new TextDecoder().decode(buf);
+      }
+      var err = document.getElementById('lockerr');
+      async function attempt(pw, remember) {
+        try {
+          var html = await decryptGallery(pw);
+          list.innerHTML = html;
+          if (q) q.style.display = '';
+          initFilter();
+          if (remember) { try { sessionStorage.setItem('sl-pw', pw); } catch (e) {} }
+        } catch (e) {
+          if (err) err.textContent = 'Mauvais mot de passe.';
+          try { sessionStorage.removeItem('sl-pw'); } catch (e2) {}
         }
+      }
+      var form = document.getElementById('lockform');
+      form && form.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        if (err) err.textContent = '';
+        attempt(document.getElementById('pw').value, true);
       });
+      if (!(window.crypto && crypto.subtle)) {
+        if (err) err.textContent = 'Needs HTTPS to unlock.';
+        return;
+      }
+      var savedPw = null; try { savedPw = sessionStorage.getItem('sl-pw'); } catch (e) {}
+      if (savedPw) attempt(savedPw, false);
     })();
   </script>
 </body>
@@ -832,12 +974,14 @@ function cmdHelp() {
 
 Usage:
   sharelinks setup --email you@example.com     Create/attach a free Surge account (headless)
+      --gallery-password "..."   (optional) lock the gallery behind a password
   sharelinks publish <file.html> [options]     Add/update a report, then publish live
       --title "..."     Override the title (default: from <title> tag)
       --theme "..."     Group under this theme (default: Uncategorized)
       --no-deploy       Add to the library without deploying
   sharelinks list                              List all reports with their URLs
   sharelinks deploy                            Rebuild the gallery and redeploy
+  sharelinks password <password>               Lock the gallery (encrypted); "clear" to unlock
   sharelinks info                              Show account + gallery info
   sharelinks remove <id|title>                 Remove a report and redeploy
   sharelinks rename-domain <subdomain>         Move the gallery to a new subdomain
@@ -860,6 +1004,8 @@ async function main() {
     case "publish": return void (await cmdPublish(positional, flags));
     case "deploy": return void (await cmdDeploy());
     case "build": return cmdBuild();
+    case "password":
+    case "lock": return void (await cmdPassword(positional, flags));
     case "list": return cmdList();
     case "info": return cmdInfo();
     case "remove": return void (await cmdRemove(positional));

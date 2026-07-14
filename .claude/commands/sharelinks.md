@@ -14,6 +14,7 @@ Handle it with the `sharelinks` CLI, following the sharelinks skill's guidance:
   Report the **Report** URL and the **Gallery** URL.
 - **`setup`** → `sharelinks setup --email <the user's email>`
 - **`rename <name>`** → `sharelinks rename-domain <name>`
+- **`password ...`** → lock/unlock the gallery: `sharelinks password "<pw>"` (or `sharelinks password clear`). Mention it only encrypts the list; direct report URLs stay reachable.
 - **Anything else** → pass through: `sharelinks $ARGUMENTS`
 
 Keep the reply tight: confirm what happened and give the link(s). Never publish a file without the user clearly wanting it shared.

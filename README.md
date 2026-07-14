@@ -69,7 +69,19 @@ sharelinks publish ./report.html --theme "Weekly Metrics"
 sharelinks list                              # every report + URL, grouped by theme
 sharelinks deploy                            # rebuild + redeploy the gallery
 sharelinks rename-domain my-reports          # pick a nicer subdomain
+sharelinks password "s3cret"                 # (optional) lock the gallery; "clear" to unlock
 ```
+
+### Optional: password-protect the gallery
+
+Set a password at setup (`--gallery-password "..."`) or any time with
+`sharelinks password "..."`. The report list is **AES-GCM encrypted** with a key
+derived from the password (PBKDF2), so titles and links aren't in the page source
+until someone enters the password (decryption happens in the browser via WebCrypto).
+
+Static-host caveat: this hides the **gallery listing**. Individual report pages
+(`…/r/<id>/`) remain publicly reachable to anyone who has the exact link. Run
+`sharelinks password clear` to make the gallery public again.
 
 - **Gallery:** `https://<your-domain>`
 - **Each report:** `https://<your-domain>/r/<id>/`

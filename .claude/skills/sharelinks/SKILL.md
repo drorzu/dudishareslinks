@@ -26,6 +26,11 @@ no confirmation email needed to publish. The command prints the gallery domain.
 If it reports the email already has a Surge account, ask the user for that account's
 password and re-run with `--password '...'`.
 
+Optionally, the gallery can be locked behind a password (the report list is
+encrypted client-side). Offer this if the user wants it private:
+`sharelinks setup --email <email> --gallery-password "<password>"`, or set it any
+time with `sharelinks password "<password>"`.
+
 ## Publishing a report
 1. **Read the HTML file** to understand what it is.
 2. **Infer a concise theme** (2–4 words, Title Case) that this report belongs to —
@@ -47,6 +52,7 @@ Then give the user the **Report** URL and the **Gallery** URL it prints.
 - `sharelinks info` — account + gallery URL.
 - `sharelinks remove "<title>"` — remove a report and redeploy.
 - `sharelinks rename-domain <subdomain>` — move the gallery to a nicer subdomain.
+- `sharelinks password "<pw>"` — lock the gallery (encrypted list); `sharelinks password clear` to make it public again. Note: individual report URLs stay reachable if someone has the exact link.
 
 ## Notes
 - Re-publishing a file with the **same title** updates it in place and keeps its URL.
